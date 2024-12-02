@@ -16,3 +16,5 @@ python-dotenv
 eventlet
 gunicorn==21.2.0
 playwright==1.39.0
+pandas==2.1.2
+numpy>=1.24.0
