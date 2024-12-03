@@ -1,5 +1,6 @@
 from flask_mail import Mail, Message
 from flask import render_template_string
+import os
 
 mail = Mail()
 
@@ -7,7 +8,8 @@ def send_verification_email(user, token):
     msg = Message('Verify Your Email',
                   recipients=[user.email])
                   
-    verification_link = f'http://localhost:5000/verify_email/{token}'
+    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    verification_link = f'{base_url}/verify_email/{token}'
     
     msg.html = f'''
     <h1>Welcome!</h1>
@@ -22,7 +24,8 @@ def send_password_reset_email(user, token):
     msg = Message('Password Reset Request',
                   recipients=[user.email])
                   
-    reset_link = f'http://localhost:5000/reset_password/{token}'
+    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    reset_link = f'{base_url}/reset_password/{token}'
     
     msg.html = f'''
     <h1>Password Reset Request</h1>
