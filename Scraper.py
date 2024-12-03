@@ -46,7 +46,7 @@ class PropertyDealsScraper:
         """Fill the date input fields"""
         
         today = datetime.now()
-        yesterday = today - timedelta(days=1)
+        yesterday = today - timedelta(days=2)
         today_year = today.year
         today_month = today.month
         today_day = today.day

@@ -8,6 +8,7 @@ from email_utils import mail, send_verification_email, send_password_reset_email
 from config import Config
 import json
 import requests
+from datetime import datetime
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -70,7 +71,7 @@ def create_example():
         "received_data": data
     }), 201
 
-@app.route('/api/scrape', methods=['GET', 'POST'])
+@app.route('/api/scrape', methods=['GET'])
 def scrape_data():
     try:
         # Static URL for the scraping target
@@ -89,74 +90,65 @@ def scrape_data():
         if response1.status_code != 200:
             return jsonify({
                 "error": "First API call failed",
-                "status_code": response1.status_code
+                "status": response1.status_code,
+                "message": response1.text
             }), 500
-            
-        # Get classified data and combine with existing categorized data
+
+        # Get the classified data
         classified_data = response1.json()
-        combined_data = classified_data + data_with_category
-        
-        # Send combined data for anomaly detection
+
+        # Second API call - send classified data for anomaly detection
         response2 = requests.post(
-            'https://faisalalmane.pythonanywhere.com/classify',
-            json=combined_data
+            'https://faisalalmane2.pythonanywhere.com/detect_anomalies',
+            json=classified_data
         )
-        
+
         if response2.status_code != 200:
             return jsonify({
-                "error": "Anomaly detection API call failed",
-                "status_code": response2.status_code
+                "error": "Second API call failed",
+                "status": response2.status_code,
+                "message": response2.text
             }), 500
-            
-        # Process results and store in database
+
+        # Get the anomaly results
         anomaly_results = response2.json()
-        stored_count = 0
-        anomaly_count = 0
-        anomaly_properties = []
-        
+
+        # Store results in database
         for property_data in anomaly_results:
             # Create new Property record
             property_entry = Property(
-                property_type=property_data.get('property_type'),
                 district=property_data.get('district'),
                 price=property_data.get('price'),
                 area=property_data.get('area'),
-                category=property_data.get('category'),
-                is_anomaly=property_data.get('is_anomaly', False)
+                price_per_meter=property_data.get('price_per_meter'),
+                is_anomaly=property_data.get('is_anomaly', False),
+                anomaly_score=property_data.get('anomaly_score', 0.0),
+                date_added=datetime.now()
             )
             
-            if property_entry.is_anomaly:
-                anomaly_count += 1
-                anomaly_properties.append(property_entry.to_dict())
-            
             db.session.add(property_entry)
-            stored_count += 1
+            
+            # If it's an anomaly, notify connected users
+            if property_entry.is_anomaly:
+                notify_users_of_anomaly({
+                    'district': property_entry.district,
+                    'price': property_entry.price,
+                    'area': property_entry.area,
+                    'price_per_meter': property_entry.price_per_meter,
+                    'anomaly_score': property_entry.anomaly_score
+                })
         
-        # Send real-time notifications if anomalies were detected
-        if anomaly_count > 0:
-            notification_data = {
-                "type": "anomaly_alert",
-                "count": anomaly_count,
-                "message": f"Anomaly Alert: {anomaly_count} Properties Detected",
-                "properties": anomaly_properties
-            }
-            socketio.emit('anomaly_alert', notification_data, broadcast=True)
-        
-        # Commit all database changes
         db.session.commit()
-        
+
         return jsonify({
-            "message": "Data processing completed",
-            "total_properties_processed": stored_count,
-            "anomalies_detected": anomaly_count,
-            "data_without_category": len(data_without_category),
-            "data_with_category": len(data_with_category)
-        })
-        
+            "message": "Scraping and processing completed successfully",
+            "anomalies_found": len([p for p in anomaly_results if p.get('is_anomaly', False)])
+        }), 200
+
     except Exception as e:
-        db.session.rollback()
         return jsonify({
-            "error": f"Processing failed: {str(e)}"
+            "error": "An error occurred during scraping",
+            "message": str(e)
         }), 500
 
 @app.route('/api/signup', methods=['POST'])
