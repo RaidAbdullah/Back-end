@@ -4,7 +4,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from Scraper import PropertyDealsScraper
 from models import db, User, Property
-from email_utils import mail, send_verification_email, send_password_reset_email
+from email_utils import mail, send_verification_code, send_reset_code
 from config import Config
 import json
 import requests
@@ -175,7 +175,7 @@ def signup():
         
         # Send verification email
         token = user.get_verification_token()
-        send_verification_email(user, token)
+        send_verification_code(user, token)
         
         return jsonify({
             "message": "Registration successful. Please check your email to verify your account."
@@ -221,7 +221,7 @@ def forgot_password():
             return jsonify({"error": "Email not found"}), 404
             
         token = user.get_reset_token()
-        send_password_reset_email(user, token)
+        send_reset_code(user, token)
         
         return jsonify({
             "message": "Password reset instructions have been sent to your email."
