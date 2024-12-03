@@ -2,10 +2,9 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
-from flask_migrate import Migrate
 from Scraper import PropertyDealsScraper
 from models import db, User, Property
-from email_utils import mail, send_verification_code, send_reset_code
+from email_utils import mail, send_verification_email, send_password_reset_email
 from config import Config
 import json
 import requests
@@ -18,7 +17,6 @@ app.config.from_object(Config)
 CORS(app)
 db.init_app(app)
 mail.init_app(app)
-migrate = Migrate(app, db)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize login manager
@@ -81,7 +79,7 @@ def scrape_data():
         
         # Initialize and run the scraper
         scraper = PropertyDealsScraper(url)
-        data_without_category, data_with_category = scraper.scrape()
+        data_without_category, data_with_category = scraper.scrape_daily_deals()
         
         # First API call - send data without category for classification
         response1 = requests.post(
@@ -101,7 +99,7 @@ def scrape_data():
 
         # Second API call - send classified data for anomaly detection
         response2 = requests.post(
-            'https://faisalalmane.pythonanywhere.com/classify',
+            'https://faisalalmane2.pythonanywhere.com/detect_anomalies',
             json=classified_data
         )
 
@@ -157,42 +155,33 @@ def scrape_data():
 def signup():
     try:
         data = request.get_json()
-        username = data.get('username')
         email = data.get('email')
         password = data.get('password')
+        username = data.get('username')
         
-        if not username or not email or not password:
-            return jsonify({"error": "Username, email and password are required"}), 400
-            
-        if User.query.filter_by(username=username).first():
-            return jsonify({"error": "Username already exists"}), 400
+        if not email or not password or not username:
+            return jsonify({"error": "Email, password, and username are required"}), 400
             
         if User.query.filter_by(email=email).first():
             return jsonify({"error": "Email already registered"}), 400
+            
+        if User.query.filter_by(username=username).first():
+            return jsonify({"error": "Username already taken"}), 400
+            
+        user = User(email=email, username=username)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
         
-        try:    
-            user = User(username=username, email=email)
-            user.set_password(password)
-            db.session.add(user)  
-
-            # Generate verification code before adding to session
-            verification_code = user.generate_verification_code()
-            
-            db.session.commit()
-            
-            # Send verification email
-            send_verification_code(user, verification_code)
-            
-            return jsonify({
-                "message": "Registration successful. Please check your email for the verification code.",
-                "username": user.username
-            })
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({"error": f"Database error: {str(e)}"}), 500
-            
+        # Send verification email
+        token = user.get_verification_token()
+        send_verification_email(user, token)
+        
+        return jsonify({
+            "message": "Registration successful. Please check your email to verify your account."
+        })
     except Exception as e:
-        return jsonify({"error": f"Request error: {str(e)}"}), 400
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -210,34 +199,69 @@ def login():
             return jsonify({"error": "Invalid username or password"}), 401
             
         if not user.is_verified:
-            return jsonify({"error": "Please verify your account before logging in"}), 401
+            return jsonify({"error": "Please verify your email before logging in"}), 401
             
         login_user(user)
         return jsonify({"message": "Login successful", "username": user.username})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/verify_account', methods=['POST'])
-def verify_account():
+@app.route('/api/forgot-password', methods=['POST'])
+def forgot_password():
     try:
         data = request.get_json()
-        username = data.get('username')
-        verification_code = data.get('verification_code')
+        email = data.get('email')
         
-        if not username or not verification_code:
-            return jsonify({"error": "Username and verification code are required"}), 400
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
             
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(email=email).first()
+        
         if not user:
-            return jsonify({"error": "User not found"}), 404
+            return jsonify({"error": "Email not found"}), 404
             
-        if user.verify_code(verification_code):
-            user.is_verified = True
-            db.session.commit()
-            return jsonify({"message": "Account verified successfully. You can now log in."})
-        else:
-            return jsonify({"error": "Invalid verification code"}), 400
+        token = user.get_reset_token()
+        send_password_reset_email(user, token)
+        
+        return jsonify({
+            "message": "Password reset instructions have been sent to your email."
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/verify_email/<token>')
+def verify_email(token):
+    try:
+        user = User.verify_email_token(token)
+        
+        if not user:
+            return jsonify({"error": "Invalid or expired verification link"}), 400
             
+        user.is_verified = True
+        db.session.commit()
+        
+        return jsonify({"message": "Email verified successfully. You can now log in."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/reset_password/<token>', methods=['POST'])
+def reset_password(token):
+    try:
+        user = User.verify_reset_token(token)
+        
+        if not user:
+            return jsonify({"error": "Invalid or expired reset link"}), 400
+            
+        data = request.get_json()
+        new_password = data.get('new_password')
+        
+        if not new_password:
+            return jsonify({"error": "New password is required"}), 400
+            
+        user.set_password(new_password)
+        db.session.commit()
+        
+        return jsonify({"message": "Password has been reset successfully. You can now log in with your new password."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -283,6 +307,7 @@ def find_matches():
         'matches': price_matches,
         'total_matches': len(price_matches)
     })
+
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)
