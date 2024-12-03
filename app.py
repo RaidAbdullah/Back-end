@@ -235,53 +235,48 @@ def verify_account():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/forgot_password', methods=['POST'])
-def forgot_password():
-    try:
-        data = request.get_json()
-        username = data.get('username')
-        
-        if not username:
-            return jsonify({"error": "Username is required"}), 400
-            
-        user = User.query.filter_by(username=username).first()
-        
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-            
-        reset_code = user.generate_reset_code()
-        send_reset_code(user, reset_code)
-        
-        return jsonify({
-            "message": "Password reset code has been sent to your email."
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/reset_password', methods=['POST'])
-def reset_password():
-    try:
-        data = request.get_json()
-        username = data.get('username')
-        reset_code = data.get('reset_code')
-        new_password = data.get('new_password')
+
+
+@app.route('/api/find-matches', methods=['POST'])
+def find_matches():
+    data = request.get_json()
+    
+    # Extract parameters from request
+    price = data.get('price')
+    area = data.get('area')
+    district = data.get('district')
+    category = data.get('category')
+    
+    # Validate required parameters
+    if not all([price, area, district, category]):
+        return jsonify({'error': 'Missing required parameters'}), 400
+    
+    # Get today's date (start and end)
+    today = datetime.utcnow().date()
+    start_of_day = datetime.combine(today, datetime.min.time())
+    end_of_day = datetime.combine(today, datetime.max.time())
+    
+    # Query for matching properties from today
+    matches = Property.query.filter(
+        Property.created_at.between(start_of_day, end_of_day),
+        Property.location.ilike(f'%{district}%'),
+        Property.category == category
+    ).all()
+    
+    # Filter matches based on price and area similarity (within 10% range)
+    price_matches = []
+    for match in matches:
+        price_diff_percent = abs(match.price - price) / price * 100
+        area_diff_percent = abs(match.area - area) / area * 100
         
-        if not username or not reset_code or not new_password:
-            return jsonify({"error": "Username, reset code and new password are required"}), 400
-            
-        user = User.query.filter_by(username=username).first()
-        if not user:
-            return jsonify({"error": "User not found"}), 404
-            
-        if user.verify_reset_code(reset_code):
-            user.set_password(new_password)
-            db.session.commit()
-            return jsonify({"message": "Password has been reset successfully. You can now log in with your new password."})
-        else:
-            return jsonify({"error": "Invalid reset code"}), 400
-            
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        if price_diff_percent <= 10 and area_diff_percent <= 10:
+            price_matches.append(match.to_dict())
+    
+    return jsonify({
+        'matches': price_matches,
+        'total_matches': len(price_matches)
+    })
 
 if __name__ == '__main__':
     socketio.run(app, debug=True, host='0.0.0.0', port=5000)

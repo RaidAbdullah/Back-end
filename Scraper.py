@@ -10,6 +10,7 @@ class PropertyDealsScraper:
     def __init__(self, url):
         """Initialize the property deals scraper"""
         self.url = url
+        self.BASE_URL = url
         self.page = None
         self.browser = None
         self.context = None
@@ -151,37 +152,95 @@ class PropertyDealsScraper:
             self.logger.error(f"Error filling date fields: {str(e)}")
             raise
 
-    def fill_location_and_price(self):
-        """Fill location and price fields"""
+    def extract_number(self, text):
+        """Extract number from text"""
         try:
-            print("\nFilling location and price...")
-            time.sleep(2)
-
-            # Scroll down to make sure price field is visible
-            print("Scrolling down...")
-            self.page.evaluate("window.scrollTo(0, window.innerHeight)")
-            time.sleep(2)
-
-            # Price field
-            print("Setting minimum price...")
-            try:
-                price_input = self.page.locator("//div[@class='RealestateInfoTransactionFilter']/div[1]/div[4]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/span[1]/input[1]").first
-                price_input.click()
-                time.sleep(1)
-                price_input.fill("1")
-                time.sleep(1)
-                self.page.keyboard.press("Enter")
-                time.sleep(1)
-                print("Price filled successfully")
-            except Exception as e:
-                print(f"Warning: Could not fill price: {str(e)}")
-                self.logger.warning(f"Could not fill price: {str(e)}")
-            
-            print("Location and price fields handling completed")
-            self.logger.info("Location and price fields handling completed")
+            return float(''.join(filter(str.isdigit, text)))
         except Exception as e:
-            print(f"Error in fill_location_and_price: {str(e)}")
-            self.logger.error(f"Error filling location and price: {str(e)}")
+            self.logger.error(f"Error extracting number: {str(e)}")
+            return None
+
+    def determine_property_category(self, price_per_meter):
+        """Determine property category based on price per meter"""
+        try:
+            if price_per_meter < 1000:
+                return "Low"
+            elif price_per_meter < 2000:
+                return "Medium"
+            else:
+                return "High"
+        except Exception as e:
+            self.logger.error(f"Error determining property category: {str(e)}")
+            return None
+
+    def scrape(self):
+        """Main scraping function"""
+        try:
+            print("\nStarting the scraping process...")
+            self.logger.info("Starting daily scrape")
+            
+            self.init_browser()
+            
+            # Navigate to URL and wait for load
+            print("\nNavigating to website...")
+            self.page.goto(self.BASE_URL)
+            self.page.wait_for_load_state('networkidle')
+            time.sleep(5)  # Additional wait for dynamic content
+            
+            # Fill date fields
+            self.fill_date_fields()
+            
+            # Click search button and wait for results
+            print("\nSearching for properties...")
+            search_button = self.page.locator('button:has-text("بحث")')
+            search_button.click()
+            time.sleep(5)  # Wait for results to load
+            
+            # Extract property data
+            print("\nExtracting property data...")
+            property_data = []
+            property_data_with_category = []
+            
+            # Get all property rows
+            rows = self.page.locator('tbody tr').all()
+            
+            for row in rows:
+                try:
+                    # Extract data from each row
+                    cells = row.locator('td').all()
+                    
+                    if len(cells) >= 6:  # Ensure we have enough cells
+                        property_info = {
+                            'district': cells[1].inner_text().strip(),
+                            'price': self.extract_number(cells[2].inner_text()),
+                            'area': self.extract_number(cells[3].inner_text()),
+                            'price_per_meter': self.extract_number(cells[4].inner_text()),
+                            'date': cells[5].inner_text().strip(),
+                        }
+                        
+                        # Add to list without category
+                        property_data.append(property_info)
+                        
+                        # Add category and append to second list
+                        property_info_with_category = property_info.copy()
+                        property_info_with_category['category'] = self.determine_property_category(
+                            property_info['price_per_meter']
+                        )
+                        property_data_with_category.append(property_info_with_category)
+                        
+                except Exception as e:
+                    print(f"Error processing row: {str(e)}")
+                    continue
+            
+            print(f"\nSuccessfully extracted {len(property_data)} properties")
+            return property_data, property_data_with_category
+            
+        except Exception as e:
+            print(f"Error occurred: {str(e)}")
+            self.logger.error(f"Error during scraping: {str(e)}")
+            raise
+        finally:
+            self.cleanup()
 
     def click_search(self):
         """Click the search button"""
@@ -236,104 +295,6 @@ class PropertyDealsScraper:
         except Exception as e:
             self.logger.error(f"Error calculating quarter from date {date_str}: {e}")
             return None
-
-    def scrape(self):
-        """Main scraping function"""
-        try:
-            print("\nStarting the scraping process...")
-            self.logger.info("Starting daily scrape")
-            
-            self.init_browser()
-            
-            # Navigate to URL and wait for load
-            print("\nNavigating to website...")
-            self.page.goto(self.url)
-            self.page.wait_for_load_state('networkidle')
-            time.sleep(5)  # Additional wait for dynamic content
-            
-            # Fill all fields
-            self.fill_date_fields()
-            time.sleep(2)
-            self.fill_location_and_price()
-            time.sleep(2)
-            self.click_search()
-            
-            print("\nWaiting for results to load...")
-            time.sleep(5)
-
-            # Scroll multiple times to load all results
-            for _ in range(5):
-                self.page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(5)  # Wait for content to load after each scroll
-
-            # Initialize results lists
-            self.data = []
-            self.data2 = []
-
-            # Scrape the cards
-            print("\nScraping property cards...")
-            
-            # Get all cards using the correct selector
-            cards_locator = self.page.locator('//ul[@class="ant-list-items"]/a/div[1]')
-            cards = cards_locator.all()
-            card_count = cards_locator.count()
-            print(f"\nFound {card_count} property cards")
-
-            for i, card in enumerate(cards, 1):
-                try:
-                    # Get all text content from the card
-                    card_text = card.inner_text()
-                    
-                    # Split the text content by newlines and clean up
-                    text_parts = [part.strip() for part in card_text.split('\n') if part.strip()]
-                    
-                    # Map the text parts to their respective fields
-                    data = {}
-                    data2={}
-                    if len(text_parts) == 16:  # without Category
-                        if text_parts[3] != "صفقة":
-                         continue
-                        data = {
-                            "DISTRICT": text_parts[0].replace("الرياض ,", "").strip(),  # District name without "الرياض ,"
-                            "transaction_type": text_parts[2],  # Transaction type
-                            "price": text_parts[8], # Transaction price
-                            "meter_price": text_parts[11],      # Price per meter
-                            "date": text_parts[13],            # Date
-                            "area": text_parts[16],             # Area
-                            "quarter": self._get_quarter(text_parts[13])
-                        }
-                        self.data.append(data)
-                    elif len(text_parts) == 17:  # with Category
-                        if text_parts[3] != "صفقة":
-                         continue
-                        data2 = {
-                            "DISTRICT": text_parts[0].replace("الرياض ,", "").strip(),          # District name
-                            "Category": text_parts[1],         # Category
-                            "transaction_type": text_parts[3],  # Transaction type
-                            "price": text_parts[9], # Transaction price
-                            "meter_price": text_parts[12],      # Price per meter
-                            "date": text_parts[14],            # Date
-                            "area": text_parts[17],             # Area
-                            "quarter": self._get_quarter(text_parts[14])
-                        }
-                        self.data2.append(data2)
-                    
-                    print(f"Successfully scraped card {i}")
-                except Exception as e:
-                    print(f"Error scraping card {i}: {e}")
-                    self.logger.error(f"Error scraping card {i}: {e}")
-
-            print("\nScraping completed successfully")
-            self.logger.info("Scraping completed successfully")
-            
-            # Return both datasets
-            return self.data, self.data2
-            
-        except Exception as e:
-            self.logger.error(f"Error during scraping: {str(e)}")
-            print(f"\nError occurred: {str(e)}")
-        finally:
-            self.cleanup()
 
 def main():
     """Main function to run the scraper"""
