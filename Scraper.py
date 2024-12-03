@@ -25,28 +25,27 @@ class PropertyDealsScraper:
         self.logger = logging.getLogger(__name__)
 
 
-    def setup_browser(self):
-        """Set up the Playwright browser"""
+    async def init_browser(self):
         try:
-            print("Setting up browser...")
-            try:
-                self.playwright = sync_playwright().start()
-                self.browser = self.playwright.chromium.launch(
-                    headless=True,
-                    slow_mo=1000,  # Add 1 second delay between actions
-                    args=['--no-sandbox', '--disable-setuid-sandbox']
-                )
-                if self.browser is None:
-                    raise Exception("Failed to launch browser")
-            except Exception as e:
-                self.logger.error(f"Failed to setup browser: {str(e)}")
-                raise
+            # Use chromium specifically and add launch arguments for server environment
+            self.playwright = sync_playwright().start()
+            self.browser = self.playwright.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-gpu'
+                ]
+            )
             self.context = self.browser.new_context()
             self.page = self.context.new_page()
-            self.logger.info("Browser setup completed")
-            print("Browser setup completed")
         except Exception as e:
-            self.logger.error(f"Failed to setup browser: {str(e)}")
+            print(f"Error initializing browser: {str(e)}")
             raise
 
     def fill_date_fields(self):
@@ -225,7 +224,7 @@ class PropertyDealsScraper:
         try:
             print("\nStarting the scraping process...")
             self.logger.info("Starting daily scrape")
-            self.setup_browser()
+            self.init_browser()
             
             # Navigate to URL and wait for load
             print("\nNavigating to website...")
