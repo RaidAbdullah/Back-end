@@ -31,7 +31,7 @@ pg8000==1.30.5
 playwright==1.41.2
 psycopg2-binary==2.9.9
 pycparser==2.22
-pyee==12.0.0
+pyee==9.0.4
 PyJWT==2.8.0
 PySocks==1.7.1
 python-dateutil==2.8.2
