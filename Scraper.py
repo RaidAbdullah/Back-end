@@ -24,10 +24,9 @@ class PropertyDealsScraper:
         )
         self.logger = logging.getLogger(__name__)
 
-
-    async def init_browser(self):
+    def init_browser(self):
+        """Initialize the browser with proper configuration"""
         try:
-            # Use chromium specifically and add launch arguments for server environment
             self.playwright = sync_playwright().start()
             self.browser = self.playwright.chromium.launch(
                 headless=True,
@@ -44,9 +43,28 @@ class PropertyDealsScraper:
             )
             self.context = self.browser.new_context()
             self.page = self.context.new_page()
+            print("Browser initialized successfully")
         except Exception as e:
             print(f"Error initializing browser: {str(e)}")
+            if hasattr(self, 'browser') and self.browser:
+                self.browser.close()
+            if hasattr(self, 'playwright') and self.playwright:
+                self.playwright.stop()
             raise
+
+    def cleanup(self):
+        """Clean up browser resources"""
+        try:
+            if hasattr(self, 'page') and self.page:
+                self.page.close()
+            if hasattr(self, 'context') and self.context:
+                self.context.close()
+            if hasattr(self, 'browser') and self.browser:
+                self.browser.close()
+            if hasattr(self, 'playwright') and self.playwright:
+                self.playwright.stop()
+        except Exception as e:
+            print(f"Error during cleanup: {str(e)}")
 
     def fill_date_fields(self):
         """Fill the date input fields"""
@@ -219,17 +237,17 @@ class PropertyDealsScraper:
             self.logger.error(f"Error calculating quarter from date {date_str}: {e}")
             return None
 
-    def scrape_daily_deals(self):
-        """Main method to scrape the daily property deals"""
+    def scrape(self):
+        """Main scraping function"""
         try:
             print("\nStarting the scraping process...")
             self.logger.info("Starting daily scrape")
+            
             self.init_browser()
             
             # Navigate to URL and wait for load
             print("\nNavigating to website...")
             self.page.goto(self.url)
-            print("Waiting for page to load completely...")
             self.page.wait_for_load_state('networkidle')
             time.sleep(5)  # Additional wait for dynamic content
             
@@ -315,19 +333,19 @@ class PropertyDealsScraper:
             self.logger.error(f"Error during scraping: {str(e)}")
             print(f"\nError occurred: {str(e)}")
         finally:
-            if self.browser:
-                self.browser.close()
-            if hasattr(self, 'playwright'):
-                self.playwright.stop()
+            self.cleanup()
 
 def main():
     """Main function to run the scraper"""
     website_url = "https://srem.moj.gov.sa/transactions-info"
     scraper = PropertyDealsScraper(website_url)
-    data, data2 = scraper.scrape_daily_deals()
+    data, data2 = scraper.scrape()
     
-
-
+    # Save data to JSON files
+    with open('property_results.json', 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    with open('property_results_with_category.json', 'w', encoding='utf-8') as f:
+        json.dump(data2, f, ensure_ascii=False, indent=4)
         
     print(f"Results saved to property_results.json")
     
