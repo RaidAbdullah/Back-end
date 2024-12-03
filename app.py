@@ -173,11 +173,11 @@ def signup():
         try:    
             user = User(username=username, email=email)
             user.set_password(password)
-            
+            db.session.add(user)  
+
             # Generate verification code before adding to session
             verification_code = user.generate_verification_code()
             
-            db.session.add(user)
             db.session.commit()
             
             # Send verification email
