@@ -81,7 +81,7 @@ def scrape_data():
         
         # Initialize and run the scraper
         scraper = PropertyDealsScraper(url)
-        data_without_category, data_with_category = scraper.scrape_daily_deals()
+        data_without_category, data_with_category = scraper.scrape()
         
         # First API call - send data without category for classification
         response1 = requests.post(
