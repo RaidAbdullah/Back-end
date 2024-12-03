@@ -1,38 +1,43 @@
 from flask_mail import Mail, Message
-from flask import render_template_string
-import os
 
 mail = Mail()
 
-def send_verification_email(user, token):
+def send_email(subject, sender, recipients, text_body, html_body):
+    """Utility function to send emails"""
+    try:
+        msg = Message(subject, sender=sender, recipients=recipients)
+        msg.body = text_body
+        msg.html = html_body
+        mail.send(msg)
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+
+def send_verification_code(user, code):
     msg = Message('Verify Your Email',
                   recipients=[user.email])
                   
-    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
-    verification_link = f'{base_url}/verify_email/{token}'
-    
     msg.html = f'''
     <h1>Welcome!</h1>
-    <p>Thank you for signing up. Please click the link below to verify your email address:</p>
-    <p><a href="{verification_link}">Click here to verify your email</a></p>
+    <p>Thank you for signing up. Your verification code is:</p>
+    <h2 style="color: #4a90e2; font-size: 24px; text-align: center; padding: 10px; background: #f5f5f5; border-radius: 5px;">{code}</h2>
+    <p>Enter this code in the application to verify your account.</p>
     <p>If you did not sign up for this account, please ignore this email.</p>
+    <p>This code will expire in 30 minutes.</p>
     '''
     
     mail.send(msg)
 
-def send_password_reset_email(user, token):
-    msg = Message('Password Reset Request',
+def send_reset_code(user, code):
+    msg = Message('Password Reset Code',
                   recipients=[user.email])
                   
-    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
-    reset_link = f'{base_url}/reset_password/{token}'
-    
     msg.html = f'''
-    <h1>Password Reset Request</h1>
-    <p>To reset your password, click the following link:</p>
-    <p><a href="{reset_link}">Click here to reset your password</a></p>
+    <h1>Password Reset Code</h1>
+    <p>Your password reset code is:</p>
+    <h2 style="color: #4a90e2; font-size: 24px; text-align: center; padding: 10px; background: #f5f5f5; border-radius: 5px;">{code}</h2>
+    <p>Enter this code in the application to reset your password.</p>
     <p>If you did not request a password reset, please ignore this email.</p>
-    <p>This link will expire in 10 minutes.</p>
+    <p>This code will expire in 30 minutes.</p>
     '''
     
     mail.send(msg)

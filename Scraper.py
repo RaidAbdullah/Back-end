@@ -29,11 +29,18 @@ class PropertyDealsScraper:
         """Set up the Playwright browser"""
         try:
             print("Setting up browser...")
-            self.playwright = sync_playwright().start()
-            self.browser = self.playwright.chromium.launch(
-                headless=False,
-                slow_mo=1000  # Add 1 second delay between actions
-            )
+            try:
+                self.playwright = sync_playwright().start()
+                self.browser = self.playwright.chromium.launch(
+                    headless=True,
+                    slow_mo=1000,  # Add 1 second delay between actions
+                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
+                if self.browser is None:
+                    raise Exception("Failed to launch browser")
+            except Exception as e:
+                self.logger.error(f"Failed to setup browser: {str(e)}")
+                raise
             self.context = self.browser.new_context()
             self.page = self.context.new_page()
             self.logger.info("Browser setup completed")
@@ -320,12 +327,8 @@ def main():
     scraper = PropertyDealsScraper(website_url)
     data, data2 = scraper.scrape_daily_deals()
     
-    # Save results to JSON file
-    print("\nSaving results to file...")
-    with open('property_results.json', 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    with open('property_results2.json', 'w', encoding='utf-8') as f:
-        json.dump(data2, f, ensure_ascii=False, indent=2)
+
+
         
     print(f"Results saved to property_results.json")
     

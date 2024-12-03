@@ -3,7 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt
 from time import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from config import Config
 
 db = SQLAlchemy()
@@ -40,6 +40,10 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128))
     is_verified = db.Column(db.Boolean, default=False)
+    verification_code = db.Column(db.String(6))
+    reset_code = db.Column(db.String(6))
+    verification_code_expires = db.Column(db.DateTime)
+    reset_code_expires = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     def set_password(self, password):
@@ -47,33 +51,47 @@ class User(UserMixin, db.Model):
         
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-        
-    def get_reset_token(self, expires_in=600):
-        return jwt.encode(
-            {'reset_password': self.id, 'exp': time() + expires_in},
-            Config.SECRET_KEY,
-            algorithm='HS256'
-        )
-        
-    def get_verification_token(self, expires_in=86400):
-        return jwt.encode(
-            {'verify_email': self.id, 'exp': time() + expires_in},
-            Config.SECRET_KEY,
-            algorithm='HS256'
-        )
-    
-    @staticmethod
-    def verify_reset_token(token):
-        try:
-            id = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])['reset_password']
-            return User.query.get(id)
-        except:
-            return None
-            
-    @staticmethod
-    def verify_email_token(token):
-        try:
-            id = jwt.decode(token, Config.SECRET_KEY, algorithms=['HS256'])['verify_email']
-            return User.query.get(id)
-        except:
-            return None
+
+    def generate_verification_code(self):
+        import random
+        import string
+        code = ''.join(random.choices(string.digits, k=6))
+        self.verification_code = code
+        self.verification_code_expires = datetime.utcnow() + timedelta(minutes=30)
+        db.session.commit()
+        return code
+
+    def verify_code(self, code):
+        if not self.verification_code or not self.verification_code_expires:
+            return False
+        if datetime.utcnow() > self.verification_code_expires:
+            return False
+        is_valid = self.verification_code == code
+        if is_valid:
+            # Clear the verification code after successful verification
+            self.verification_code = None
+            self.verification_code_expires = None
+            db.session.commit()
+        return is_valid
+
+    def generate_reset_code(self):
+        import random
+        import string
+        code = ''.join(random.choices(string.digits, k=6))
+        self.reset_code = code
+        self.reset_code_expires = datetime.utcnow() + timedelta(minutes=30)
+        db.session.commit()
+        return code
+
+    def verify_reset_code(self, code):
+        if not self.reset_code or not self.reset_code_expires:
+            return False
+        if datetime.utcnow() > self.reset_code_expires:
+            return False
+        is_valid = self.reset_code == code
+        if is_valid:
+            # Clear the reset code after successful verification
+            self.reset_code = None
+            self.reset_code_expires = None
+            db.session.commit()
+        return is_valid
