@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_migrate import Migrate
 from Scraper import PropertyDealsScraper
 from models import db, User, Property
 from email_utils import mail, send_verification_code, send_reset_code
@@ -18,6 +19,7 @@ CORS(app)
 db.init_app(app)
 mail.init_app(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+migrate = Migrate(app, db)
 
 # Initialize login manager
 login_manager = LoginManager()
