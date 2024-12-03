@@ -276,8 +276,8 @@ def find_matches():
     
     # Extract parameters from request
     price = data.get('price')
-    area = data.get('area')
-    district = data.get('district')
+    district = data.get('area')
+    area = data.get('district')
     category = data.get('category')
     
     # Validate required parameters
