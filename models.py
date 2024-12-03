@@ -58,7 +58,6 @@ class User(UserMixin, db.Model):
         code = ''.join(random.choices(string.digits, k=6))
         self.verification_code = code
         self.verification_code_expires = datetime.utcnow() + timedelta(minutes=30)
-        db.session.commit()
         return code
 
     def verify_code(self, code):

@@ -169,24 +169,30 @@ def signup():
             
         if User.query.filter_by(email=email).first():
             return jsonify({"error": "Email already registered"}), 400
+        
+        try:    
+            user = User(username=username, email=email)
+            user.set_password(password)
             
-        user = User(username=username, email=email)
-        user.set_password(password)
-        db.session.add(user)
-        db.session.flush()  # This assigns an id to the user
-        
-        # Generate verification code and send email
-        verification_code = user.generate_verification_code()
-        send_verification_code(user, verification_code)
-        db.session.commit()
-        
-        return jsonify({
-            "message": "Registration successful. Please check your email for the verification code.",
-            "username": user.username
-        })
+            # Generate verification code before adding to session
+            verification_code = user.generate_verification_code()
+            
+            db.session.add(user)
+            db.session.commit()
+            
+            # Send verification email
+            send_verification_code(user, verification_code)
+            
+            return jsonify({
+                "message": "Registration successful. Please check your email for the verification code.",
+                "username": user.username
+            })
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+            
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Request error: {str(e)}"}), 400
 
 @app.route('/api/login', methods=['POST'])
 def login():
