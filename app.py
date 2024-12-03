@@ -71,7 +71,7 @@ def create_example():
         "received_data": data
     }), 201
 
-@app.route('/api/scrape', methods=['GET'])
+@app.route('/scrape', methods=['GET'])
 def scrape_data():
     try:
         # Static URL for the scraping target
